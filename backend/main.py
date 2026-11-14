@@ -14,6 +14,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+print("hi leen")
 def get_db():
     """Create database connection"""
     return duckdb.connect('fires.duckdb', read_only=False)
@@ -111,6 +113,83 @@ def get_monthly_activity():
         "data": result,
         "count": len(result)
     }
+
+@app.get("/api/calendar")
+def get_calendar(region: Optional[str] = None, year: Optional[int] = None):
+    """
+    Get fire activity by month and region for calendar visualization
+    
+    Response format for frontend:
+    {
+        "months": [
+            {
+                "month": "2024-01",
+                "region": "Australia",
+                "fire_count": 1234,
+                "days_active": 28,
+                "avg_confidence": 87.5
+            }
+        ],
+        "summary": {
+            "total_fires": 5000,
+            "regions": ["Australia", "Brazil", ...],
+            "date_range": {"start": "2024-01-01", "end": "2024-12-31"}
+        }
+    }
+    """
+    db = get_db()
+    
+    query = "SELECT month, region, instrument, fire_count, days_active, ROUND(avg_confidence, 2) as avg_confidence FROM monthly_sensor_counts"
+    params = []
+    
+    if region:
+        query += " AND region = ?"
+        params.append(region)
+    
+    if year:
+        query += " AND YEAR(month) = ?"
+        params.append(year)
+    
+    query += " ORDER BY month DESC"
+    
+    try:
+        result = db.execute(query, params).fetchall()
+        
+        months_data = []
+        for row in result:
+            months_data.append({
+                "month": str(row[0]),
+                "region": row[1],
+                "instrument": row[2],
+                "fire_count": row[3],
+                "days_active": row[4],
+                "avg_confidence": row[5]
+            })
+        
+        # Get summary info
+        summary_query = "SELECT MIN(month) as start_date, MAX(month) as end_date, COUNT(DISTINCT region) as total_regions FROM monthly_sensor_counts"
+        summary = db.execute(summary_query).fetchone()
+        
+        unique_regions = db.execute("SELECT DISTINCT region FROM monthly_sensor_counts ORDER BY region").fetchall()
+        regions = [r[0] for r in unique_regions]
+        
+        return {
+            "months": months_data,
+            "summary": {
+                "total_fires": sum(m["fire_count"] for m in months_data),
+                "regions": regions,
+                "date_range": {
+                    "start": str(summary[0]) if summary[0] else None,
+                    "end": str(summary[1]) if summary[1] else None
+                },
+                "filters_applied": {
+                    "region": region,
+                    "year": year
+                }
+            }
+        }
+    except Exception as e:
+        return {"error": str(e), "status": "failed"}
 
 if __name__ == "__main__":
     import uvicorn
