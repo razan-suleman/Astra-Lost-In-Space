@@ -1,133 +1,130 @@
-# DATA IS READY!
+# 🔥 Fire Data Backend - Ready to Use!
 
-## Where is the data?
+## Quick Start
 
-```
-backend/fires.duckdb
-```
-
-## Current data in database:
-
-- **all_fires**: 1,000 fire records (with realistic location, date, temperature data)
-- **monthly_activity**: 24 records
-
-**TOTAL: 1,024 records ready to use**
-
----
-
-## How to access it
-
-### Option 1:  Use the API (No installation needed) 
-
+### 1. Start the server
 ```bash
-# Get summary
-curl http://localhost:8000/api/summary
-
-# Get all fire data
-curl "http://localhost:8000/api/query?sql=SELECT * FROM all_fires LIMIT 50"
-
-# Get fire count by region
-curl "http://localhost:8000/api/query?sql=SELECT region, COUNT(*) as count FROM all_fires GROUP BY region"
-
-# Filter by confidence
-curl "http://localhost:8000/api/query?sql=SELECT * FROM all_fires WHERE confidence > 80"
+cd backend
+python main.py
 ```
 
-### Option 2: Browser - Interactive Docs
+### 2. Access the API
 
-Open: **http://localhost:8000/docs**
+**Option A: Browser (Easiest)**
+- Open: http://localhost:8000/docs
+- Click any endpoint, test it out
+- See responses in real-time
 
-Click any endpoint, fill in parameters, click "Try it out"
+**Option B: Command Line**
+```bash
+curl http://localhost:8000/api/summary
+curl http://localhost:8000/api/calendar
+```
 
-### Option 3: Direct Database Access (Python)
-
+**Option C: Python**
 ```python
 import duckdb
-
 db = duckdb.connect('backend/fires.duckdb')
-
-# Get all fires
-fires = db.execute("SELECT * FROM all_fires").fetchall()
+fires = db.execute("SELECT * FROM all_fires LIMIT 10").fetchall()
 print(fires)
-
-# Get statistics
-stats = db.execute("""
-    SELECT 
-        COUNT(*) as total,
-        AVG(confidence) as avg_confidence,
-        MAX(brightness) as max_brightness
-    FROM all_fires
-""").fetchall()
-print(stats)
-
-db.close()
 ```
 
 ---
 
-## What's in the data?
+## Available Endpoints
 
-Each fire record has:
-- **latitude, longitude** - GPS coordinates
-- **acq_date** - Date fire was detected
-- **acq_time** - Time of detection (0-24)
-- **confidence** - How sure (0-100)
-- **brightness** - Temperature reading
-- **instrument** - MODIS or VIIRS
-- **satellite** - Which satellite detected it
-- **region** - USA or Global
-- **frp** - Fire radiative power
+| Endpoint | What it does |
+|----------|-------------|
+| `GET /api/calendar` | Fire data by month/region (for calendar viz) |
+| `GET /api/summary` | Database stats |
+| `GET /api/statistics` | Fire statistics |
+| `GET /api/data?limit=10` | Raw fire records |
+| `GET /api/query?sql=...` | Custom SQL queries |
+| `GET /health` | Check if server is running |
 
 ---
 
-## Quick Examples
+## Calendar Endpoint (Main)
 
-### Get recent fires (today)
-```bash
-curl "http://localhost:8000/api/query?sql=SELECT * FROM all_fires WHERE acq_date = CURRENT_DATE"
+```
+GET http://localhost:8000/api/calendar?region=Australia&year=2024
 ```
 
-### Get hottest fires
-```bash
-curl "http://localhost:8000/api/query?sql=SELECT * FROM all_fires ORDER BY brightness DESC LIMIT 10"
-```
-
-### Get most confident detections
-```bash
-curl "http://localhost:8000/api/query?sql=SELECT * FROM all_fires WHERE confidence > 90"
-```
-
-### Get fires in specific region
-```bash
-curl "http://localhost:8000/api/query?sql=SELECT * FROM all_fires WHERE region='USA'"
-```
-
-### Export to CSV
-```bash
-duckdb -c "SELECT * FROM all_fires" backend/fires.duckdb -c ".mode csv" > fires.csv
+**Response:**
+```json
+{
+  "months": [
+    {
+      "month": "2024-01-01",
+      "region": "Australia",
+      "fire_count": 1234,
+      "days_active": 28,
+      "avg_confidence": 87.5
+    }
+  ],
+  "summary": {
+    "total_fires": 1234,
+    "regions": ["Australia", "Brazil", ...]
+  }
+}
 ```
 
 ---
 
-## API Endpoints
+## Database
 
-| Endpoint | Use |
-|----------|-----|
-| `GET /health` | Check if API is running |
-| `GET /api/summary` | Database overview |
-| `GET /api/tables` | List all tables |
-| `GET /api/data?limit=10` | Get data with limit |
-| `GET /api/query?sql=...` | Run custom SQL |
-| `GET /api/statistics` | Table stats |
-| `GET /docs` | Interactive documentation |
+**File:** `backend/fires.duckdb`
+
+**Tables:**
+- `all_fires` - Individual fire records
+- `monthly_sensor_counts` - Monthly aggregated data
+- `monthly_activity` - Monthly summary
+
+**Columns in each fire record:**
+- latitude, longitude (GPS location)
+- acq_date, acq_time (detection date/time)
+- confidence (0-100, how sure)
+- brightness (temperature)
+- instrument (MODIS/VIIRS)
+- satellite (which satellite)
+- region (geographic region)
+- frp (fire radiative power)
 
 ---
 
-## Server Info
+## Frontend Integration (React Example)
 
-- Running at: **http://localhost:8000**
-- Database file: **backend/fires.duckdb** (780 KB)
-- Contains: **1,024 fire records**
-- Ready to query: **YES ✓**
+```javascript
+// Fetch calendar data
+const response = await fetch('http://localhost:8000/api/calendar');
+const data = await response.json();
 
+// Filter by region and year
+const response = await fetch('http://localhost:8000/api/calendar?region=Australia&year=2024');
+const data = await response.json();
 
+// Display data
+data.months.forEach(month => {
+  console.log(`${month.month}: ${month.fire_count} fires`);
+});
+```
+
+---
+
+## Troubleshooting
+
+**"Connection refused"**
+- Make sure server is running: `python main.py` in backend folder
+
+**"Module not found"**
+- Install dependencies: `pip install -r requirements.txt`
+
+**No data showing**
+- Database file exists: `backend/fires.duckdb`
+- Check: http://localhost:8000/api/summary
+
+---
+
+## That's it! 🚀
+
+Server is ready. Start it and integrate with your frontend!
