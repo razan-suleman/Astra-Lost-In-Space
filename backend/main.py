@@ -14,6 +14,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+print("hi leen")
 def get_db():
     """Create database connection"""
     return duckdb.connect('fires.duckdb', read_only=False)
