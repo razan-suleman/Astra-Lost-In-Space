@@ -1,4 +1,3 @@
-# 🔥 Fire Data Backend - Ready to Use!
 
 ## Quick Start
 
@@ -90,7 +89,7 @@ GET http://localhost:8000/api/calendar?region=Australia&year=2024
 - region (geographic region)
 - frp (fire radiative power)
 
----
+---kkk
 
 ## Frontend Integration (React Example)
 
@@ -124,7 +123,3 @@ data.months.forEach(month => {
 - Check: http://localhost:8000/api/summary
 
 ---
-
-## That's it! 🚀
-
-Server is ready. Start it and integrate with your frontend!
