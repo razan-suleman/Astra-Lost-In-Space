@@ -16,7 +16,7 @@ from frontend import calendar_view, charts, config, data, map_view, splash
 from frontend.data import Filters
 
 st.set_page_config(
-    page_title="Harmonized Burning Activity Calendar",
+    page_title="Fire Activity Calendar",
     page_icon="🔥",
     layout="wide",
 )
@@ -24,6 +24,13 @@ st.set_page_config(
 # --- Intro screen: shown until the user clicks Start ---------------------------------
 if not st.session_state.get("started"):
     splash.render()
+    st.stop()
+
+mode = st.sidebar.radio("Data source", ["Real observations", "Sample demo"])
+if mode == "Real observations":
+    from frontend import real_view
+
+    real_view.render()
     st.stop()
 
 if not config.DAILY_PATH.exists():

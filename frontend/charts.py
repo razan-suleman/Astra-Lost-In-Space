@@ -5,6 +5,8 @@ No data access happens here, so charts can be tested with any frame.
 
 from __future__ import annotations
 
+import calendar
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -37,6 +39,21 @@ def _fmt(v: float) -> str:
     if abs(v) >= 10:
         return f"{v:.0f}"
     return f"{v:.2g}"
+
+
+def year_comparison(data: pd.DataFrame) -> go.Figure:
+    """Compare reported monthly counts without filling missing periods."""
+    fig = go.Figure()
+    for year in data.columns:
+        fig.add_trace(go.Bar(x=data.index, y=data[year], name=year))
+    _base_layout(fig, height=360)
+    fig.update_layout(barmode="group", legend_title_text="Year")
+    fig.update_xaxes(
+        title_text="Month", categoryorder="array",
+        categoryarray=list(calendar.month_name)[1:],
+    )
+    fig.update_yaxes(title_text="Reported detections", rangemode="tozero")
+    return fig
 
 
 def time_series(df: pd.DataFrame, unit: str, visible: list[str]) -> go.Figure:

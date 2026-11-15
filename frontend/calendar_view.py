@@ -189,7 +189,9 @@ _CSS = f"""
 """
 
 
-def month_grid_html(values: pd.Series, unit: str, sources: dict[str, str] | None) -> str:
+def month_grid_html(
+    values: pd.Series, unit: str, sources: dict[str, str] | None, *, raw_detections: bool = False
+) -> str:
     """HTML for the summary line, the month cards and the legend.
 
     values: one value per day (NaN = no data). sources: month "YYYY-MM" ->
@@ -203,8 +205,14 @@ def month_grid_html(values: pd.Series, unit: str, sources: dict[str, str] | None
     # Summary line
     fire_days = int((values > 0).sum())
     total = float(np.nansum(values.to_numpy()))
-    parts = [f"<span><b>{_fmt(total)} {unit}</b> in this interval</span>",
-             f"<span><b>{fire_days}</b> of {values.notna().sum()} days with fire</span>"]
+    if raw_detections:
+        parts = [
+            f"<span><b>{_fmt(total)} {unit}</b> recorded in this interval</span>",
+            f"<span><b>{fire_days}</b> of {len(values)} days with detections</span>",
+        ]
+    else:
+        parts = [f"<span><b>{_fmt(total)} {unit}</b> in this interval</span>",
+                 f"<span><b>{fire_days}</b> of {values.notna().sum()} days with fire</span>"]
     if fire_days:
         peak_day = values.idxmax()
         parts.append(f"<span>Busiest day <b>{peak_day:%d %b %Y}</b> · {_fmt(values.max())} {unit}</span>")
@@ -223,16 +231,19 @@ def month_grid_html(values: pd.Series, unit: str, sources: dict[str, str] | None
                        else "observed by MODIS")
                 src = f'<span class="cal-src {cls}" title="Values for this month are {tip}">{tag}</span>'
         width = 0 if not top_month or np.isnan(mtotal) else max(2, mtotal / top_month * 100)
-        tot_txt = "no data" if np.isnan(mtotal) else f"{_fmt(mtotal)} {unit}"
+        no_data = "no detections reported" if raw_detections else "no data"
+        tot_txt = no_data if np.isnan(mtotal) else f"{_fmt(mtotal)} {unit}"
         cells = [f'<div class="cal-wd">{d}</div>' for d in WEEKDAYS]
         cells += ['<div></div>'] * first.weekday()
         for d in range(1, n_days + 1):
             day = first + pd.Timedelta(days=d - 1)
             v, b = by_day.get(day.date(), (np.nan, -2))
             if b == -2:
-                cells.append(f'<div class="cal-d na" data-t="{day:%a %d %b %Y} · no data">{d}</div>')
+                tip = "no detections reported; coverage unknown" if raw_detections else "no data"
+                cells.append(f'<div class="cal-d na" data-t="{day:%a %d %b %Y} · {tip}">{d}</div>')
             elif b == -1:
-                cells.append(f'<div class="cal-d" data-t="{day:%a %d %b %Y} · no fire">{d}</div>')
+                tip = "zero detections" if raw_detections else "no fire"
+                cells.append(f'<div class="cal-d" data-t="{day:%a %d %b %Y} · {tip}">{d}</div>')
             else:
                 ink = "#2a1206" if b >= 4 else "rgba(255,240,225,.85)"
                 cells.append(
@@ -250,12 +261,15 @@ def month_grid_html(values: pd.Series, unit: str, sources: dict[str, str] | None
 
     # Legend
     swatches = "".join(f'<i style="background:{c}"></i>' for c in config.FIRE_RAMP)
-    rng = f"{_fmt(vmin)} – {_fmt(vmax)} {unit} per day, log scale" if vmax else "no fire in this interval"
+    empty = "no detections reported" if raw_detections else "no fire in this interval"
+    rng = f"{_fmt(vmin)} – {_fmt(vmax)} {unit} per day, log scale" if vmax else empty
+    zero_label = "Zero detections" if raw_detections else "No fire"
+    missing_label = "No detections reported; coverage unknown" if raw_detections else "No data"
     html.append(
         f'<div class="cal-legend"><span>Less</span>{swatches}<span>More</span>'
         f'<span class="gap"></span><span>({rng})</span><span class="gap"></span>'
-        f'<i style="background:{config.NO_FIRE}"></i><span>No fire</span><span class="gap"></span>'
+        f'<i style="background:{config.NO_FIRE}"></i><span>{zero_label}</span><span class="gap"></span>'
         '<i style="background:repeating-linear-gradient(45deg, rgba(205,226,251,.3) 0 2px, transparent 2px 5px)"></i>'
-        "<span>No data</span></div>"
+        f"<span>{missing_label}</span></div>"
     )
     return "".join(html)

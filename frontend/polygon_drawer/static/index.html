@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Draw an Australia polygon</title>
+  <style>
+    body { font: 15px system-ui, sans-serif; color: #172b3b; margin: 0; }
+    p { margin: .4rem 0; }
+    svg { display: block; width: 100%; max-height: 640px; background: #e7f2f7; border: 1px solid #8da7b4; touch-action: manipulation; }
+    .land { fill: #e4e6d7; stroke: #73857a; stroke-width: 1.4; fill-rule: evenodd; }
+    .cells { fill: #e99c26; fill-opacity: .55; pointer-events: none; }
+    .outline { fill: #2867a2; fill-opacity: .18; stroke: #164a83; stroke-width: 3; pointer-events: none; }
+    .vertex { fill: #fff; stroke: #164a83; stroke-width: 3; pointer-events: none; }
+    .controls { display: flex; flex-wrap: wrap; gap: .5rem; margin: .6rem 0; }
+    button { font: inherit; padding: .45rem .8rem; cursor: pointer; border: 1px solid #596d79; border-radius: .3rem; background: #fff; color: #172b3b; }
+    button:focus-visible { outline: 3px solid #d87500; outline-offset: 2px; }
+    button:disabled { opacity: .5; cursor: default; }
+    #apply { background: #164a83; color: white; border-color: #164a83; }
+    #status { min-height: 1.5em; }
+    .legend { font-size: .9em; }
+  </style>
+</head>
+<body>
+  <p>Click or tap the map to add vertices (maximum 50). Use Undo to remove the last point or Reset to clear the draft. Apply requires at least 3 vertices; the polygon closes automatically.</p>
+  <p>To clear an applied polygon, Reset and then Apply with no vertices. Changes are not sent until Apply.</p>
+  <p class="legend">Orange squares: supplied 0.5° detection cells. Map: 110–155° E, 45–9° S; offshore territories outside this area are not shown.</p>
+  <svg id="map" viewBox="0 0 1000 900" role="img" aria-label="Map of Australia. Click or tap to add polygon vertices." preserveAspectRatio="xMidYMid meet">
+    <path id="land" class="land"></path>
+    <path id="cells" class="cells"></path>
+    <path id="outline" class="outline"></path>
+    <g id="vertices"></g>
+  </svg>
+  <div class="controls">
+    <button id="undo" type="button">Undo last point</button>
+    <button id="reset" type="button">Reset draft</button>
+    <button id="apply" type="button">Apply polygon</button>
+  </div>
+  <p id="status" role="status" aria-live="polite"></p>
+  <script>
+    (() => {
+      "use strict";
+      const svg = document.getElementById("map");
+      const land = document.getElementById("land");
+      const cellLayer = document.getElementById("cells");
+      const outline = document.getElementById("outline");
+      const vertices = document.getElementById("vertices");
+      const undo = document.getElementById("undo");
+      const reset = document.getElementById("reset");
+      const apply = document.getElementById("apply");
+      const status = document.getElementById("status");
+      const NS = "http://www.w3.org/2000/svg";
+      const width = 1000, height = 900;
+      let points = [], lastInitial, pendingInitial, initialized = false, canClear = false;
+
+      function send(type, extra = {}) {
+        window.parent.postMessage({isStreamlitMessage: true, type, ...extra}, "*");
+      }
+      function resize() {
+        send("streamlit:setFrameHeight", {height: Math.ceil(document.documentElement.scrollHeight)});
+      }
+      function project(point) {
+        return [(point[0] - 110) * width / 45, (-9 - point[1]) * height / 36];
+      }
+      function valid(point) {
+        return Array.isArray(point) && point.length === 2 &&
+          point.every(n => typeof n === "number" && Number.isFinite(n)) &&
+          point[0] >= 110 && point[0] <= 155 && point[1] >= -45 && point[1] <= -9;
+      }
+      function pathForRing(ring) {
+        return ring.map((point, index) => {
+          const [x, y] = project(point);
+          return `${index ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`;
+        }).join("") + "Z";
+      }
+      function drawLand(geometry) {
+        const polygons = geometry && geometry.type === "MultiPolygon" ? geometry.coordinates :
+          geometry && geometry.type === "Polygon" ? [geometry.coordinates] : [];
+        land.setAttribute("d", polygons.flatMap(polygon => polygon.map(pathForRing)).join(""));
+      }
+      function drawCells(cells) {
+        let paths = [];
+        for (const cell of Array.isArray(cells) ? cells : []) {
+          const lon = cell && cell.min_lon, lat = cell && cell.min_lat;
+          if (typeof lon !== "number" || typeof lat !== "number" ||
+              !Number.isFinite(lon) || !Number.isFinite(lat) ||
+              lon + .5 < 110 || lon > 155 || lat + .5 < -45 || lat > -9) continue;
+          const [x, y] = project([lon, lat + .5]);
+          paths.push(`M${x.toFixed(2)},${y.toFixed(2)}h${(width / 90).toFixed(2)}v${(height / 72).toFixed(2)}h-${(width / 90).toFixed(2)}Z`);
+        }
+        cellLayer.setAttribute("d", paths.join(""));
+      }
+      function draw() {
+        outline.setAttribute("d", points.length ? points.map((point, index) => {
+          const [x, y] = project(point);
+          return `${index ? "L" : "M"}${x},${y}`;
+        }).join("") + (points.length >= 3 ? "Z" : "") : "");
+        vertices.replaceChildren();
+        points.forEach(point => {
+          const [x, y] = project(point);
+          const circle = document.createElementNS(NS, "circle");
+          circle.setAttribute("cx", x); circle.setAttribute("cy", y);
+          circle.setAttribute("r", "5"); circle.setAttribute("class", "vertex");
+          vertices.appendChild(circle);
+        });
+        undo.disabled = points.length === 0;
+        reset.disabled = points.length === 0 && canClear;
+        apply.disabled = points.length < 3 && !(points.length === 0 && canClear);
+        status.textContent = `${points.length} of 50 vertices.`;
+      }
+      svg.addEventListener("click", event => {
+        if (points.length >= 50) {
+          status.textContent = "Maximum 50 vertices reached. Undo or reset to make changes.";
+          return;
+        }
+        const matrix = svg.getScreenCTM();
+        if (!matrix) return;
+        const cursor = svg.createSVGPoint();
+        cursor.x = event.clientX; cursor.y = event.clientY;
+        const local = cursor.matrixTransform(matrix.inverse());
+        if (local.x < 0 || local.x > width || local.y < 0 || local.y > height) return;
+        points.push([Number((110 + local.x * 45 / width).toFixed(6)),
+                     Number((-9 - local.y * 36 / height).toFixed(6))]);
+        canClear = false;
+        draw();
+      });
+      undo.addEventListener("click", () => { points.pop(); canClear = false; draw(); });
+      reset.addEventListener("click", () => { points = []; canClear = true; draw(); });
+      apply.addEventListener("click", () => {
+        if (points.length < 3 && !(points.length === 0 && canClear)) {
+          status.textContent = "Add at least 3 vertices before applying.";
+          return;
+        }
+        const eventId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        pendingInitial = JSON.stringify(points);
+        send("streamlit:setComponentValue", {value: {event_id: eventId, coordinates: points.map(p => [...p])}, dataType: "json"});
+        status.textContent = points.length ? "Polygon applied." : "Clear requested.";
+      });
+      window.addEventListener("message", event => {
+        if (!event.data || event.data.type !== "streamlit:render") return;
+        const args = event.data.args || {};
+        const initial = Array.isArray(args.initial) && args.initial.length <= 50 &&
+          args.initial.every(valid) ? args.initial : [];
+        const initialKey = JSON.stringify(initial);
+        if (!initialized || initialKey !== lastInitial) {
+          if (!initialized || initialKey !== pendingInitial) {
+            points = initial.map(point => [...point]);
+            canClear = false;
+          }
+          lastInitial = initialKey;
+          initialized = true;
+        }
+        if (initialKey === pendingInitial) pendingInitial = undefined;
+        drawLand(args.geometry);
+        drawCells(args.cells);
+        draw();
+        resize();
+      });
+      if (window.ResizeObserver) new ResizeObserver(resize).observe(document.body);
+      window.addEventListener("resize", resize);
+      send("streamlit:componentReady", {apiVersion: 1});
+      resize();
+    })();
+  </script>
+</body>
+</html>
